@@ -42,7 +42,7 @@ dnf "${installroot[@]}" -y install \
     selinux-policy-targeted policycoreutils \
     glibc-langpack-en shadow-utils passwd sudo openssh-server \
     NetworkManager NetworkManager-wifi bluez wpa_supplicant \
-    pipewire pipewire-alsa pipewire-pulseaudio wireplumber alsa-ucm-conf \
+    pipewire pipewire-alsa pipewire-pulseaudio wireplumber alsa-ucm \
     mesa-dri-drivers mesa-vulkan-drivers \
     ca-certificates git gcc gcc-c++ make meson ninja-build kernel-headers \
     pkgconf-pkg-config systemd-devel protobuf-c-devel protobuf-c-compiler \
