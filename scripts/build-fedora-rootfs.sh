@@ -111,14 +111,14 @@ printf '127.0.0.1 localhost %s\n::1 localhost\n' "$HOST_NAME" > "$target/etc/hos
 ch useradd -m -G wheel "$USERNAME"
 printf '%s:%s\n' "$USERNAME" "$PASSWORD" | ch chpasswd
 ch passwd -l root
-systemctl --root="$target" enable NetworkManager.service sshd.service bluetooth.service \
+ch systemctl --root=/ enable NetworkManager.service sshd.service bluetooth.service \
     hexagonrpcd-adsp-rootpd.service hexagonrpcd-adsp-sensorspd.service \
     zhiyu-sensord.service zhiyu-boot-success.service
 if [[ -n "$display_manager" ]]; then
-    systemctl --root="$target" enable "$display_manager"
-    systemctl --root="$target" set-default graphical.target
+    ch systemctl --root=/ enable "$display_manager"
+    ch systemctl --root=/ set-default graphical.target
 else
-    systemctl --root="$target" set-default multi-user.target
+    ch systemctl --root=/ set-default multi-user.target
 fi
 ch rpm -q "${board[@]}" mesa-dri-drivers mesa-vulkan-drivers
 
