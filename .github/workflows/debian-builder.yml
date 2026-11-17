@@ -26,7 +26,11 @@ on:
       hostname:
         description: Hostname
         type: string
-        default: alarm
+        default: debian
+      package_repository:
+        description: GitHub repository providing Zhiyu packages (owner/repo)
+        type: string
+        default: PickaxeHit/linux-zhiyu
       firmware:
         description: Also install Debian's firmware-linux (our board blobs are always copied)
         type: boolean
@@ -45,8 +49,6 @@ env:
   VA_DRIVER_URL: https://github.com/radxa-pkg/qcom-va-driver/archive/0980a1decf26d34c9aa71cd0a4a0d25703a7a17f.tar.gz
   # Desktop-side remote procedure daemon for the ADSP (hexagonrpcd + units);
   # the AUR package is gone, so build upstream.
-  # exp publishes a complete, indexed APT repository as prerelease assets.
-  PACKAGE_REPO_BASE: https://github.com/PickaxeHit/linux-zhiyu/releases/download/repo-apt
   HEXAGONRPC_URL: https://github.com/linux-msm/hexagonrpc/archive/da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz
   HEXAGONRPC_SRC: hexagonrpc-da7a3742ab8d5273a281b70ee11f16fb2cb6a690
   VA_DRIVER_SRC: qcom-va-driver-0980a1decf26d34c9aa71cd0a4a0d25703a7a17f
@@ -70,6 +72,7 @@ jobs:
           USERNAME: ${{ inputs.username }}
           PASSWORD: ${{ secrets.ROOTFS_PASSWORD || inputs.password }}
           HOST_NAME: ${{ inputs.hostname }}
+          PACKAGE_REPOSITORY: ${{ inputs.package_repository }}
           FIRMWARE: ${{ inputs.firmware }}
         run: |
           set -eo pipefail
@@ -77,6 +80,12 @@ jobs:
 
           [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "invalid username"; exit 1; }
           [[ "$HOST_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || { echo "invalid hostname"; exit 1; }
+          if ! [[ "$PACKAGE_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ]] ||
+            [[ "${PACKAGE_REPOSITORY#*/}" = . || "${PACKAGE_REPOSITORY#*/}" = .. ]]; then
+            echo "Invalid package repository. Use owner/repo." >&2
+            exit 1
+          fi
+          PACKAGE_REPO_BASE="https://github.com/$PACKAGE_REPOSITORY/releases/download/repo-apt"
 
           T="$PWD/target"
           mkdir -p "$T"
