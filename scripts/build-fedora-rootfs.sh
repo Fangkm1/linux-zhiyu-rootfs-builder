@@ -110,7 +110,10 @@ ch systemctl --root=/ enable NetworkManager.service sshd.service bluetooth.servi
     hexagonrpcd-adsp-rootpd.service hexagonrpcd-adsp-sensorspd.service \
     zhiyu-sensord.service zhiyu-boot-success.service
 if [[ -n "$display_manager" ]]; then
-    ch systemctl --root=/ enable "$display_manager"
+    # Fedora desktop packages can set the alias during installation.
+    if ! ch test -e /etc/systemd/system/display-manager.service; then
+        ch systemctl --root=/ --force enable "$display_manager"
+    fi
     ch systemctl --root=/ set-default graphical.target
 else
     ch systemctl --root=/ set-default multi-user.target
