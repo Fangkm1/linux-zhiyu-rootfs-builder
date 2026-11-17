@@ -76,6 +76,9 @@ make_install() {
     ch meson install -C "$1/build" --no-rebuild
 }
 make_install /var/tmp/hexagonrpc
+# Upstream derives the unit directory from libdir. Fedora loads units
+# from /usr/lib/systemd/system, even when shared objects use /usr/lib64.
+mv "$target"/usr/lib64/systemd/system/hexagonrpcd-*.service "$target/usr/lib/systemd/system/"
 ch make -C /var/tmp/qmic
 ch make -C /var/tmp/qmic install
 make_install /var/tmp/qrtr
