@@ -34,7 +34,7 @@ installroot=(
 )
 board=(
     linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware
-    linux-zhiyu-images libcamera-zhiyu zhiyu-sensord
+    linux-zhiyu-images libcamera-zhiyu zhiyu-sensord hexagonrpc
 )
 dnf "${installroot[@]}" -y install \
     fedora-release fedora-repos fedora-gpg-keys filesystem basesystem \
@@ -65,7 +65,6 @@ clone_at() {
     ch git -C "$1" fetch --depth=1 "$2" "$3"
     ch git -C "$1" checkout --detach FETCH_HEAD
 }
-clone_at /var/tmp/hexagonrpc https://github.com/linux-msm/hexagonrpc.git da7a3742ab8d5273a281b70ee11f16fb2cb6a690
 clone_at /var/tmp/qmic https://github.com/linux-msm/qmic.git 4574736afce75aa5eec1e1069a19563410167c9f
 clone_at /var/tmp/qrtr https://github.com/linux-msm/qrtr.git 29e36ae164389580a0f8ea7a7fdb728140ae978d
 clone_at /var/tmp/sensh https://gitlab.com/flamingradian/sensh.git 560b48080283fe73ca5e67635b566177028cebc9
@@ -75,10 +74,6 @@ make_install() {
     ch meson compile -C "$1/build"
     ch meson install -C "$1/build" --no-rebuild
 }
-make_install /var/tmp/hexagonrpc
-# Upstream derives the unit directory from libdir. Fedora loads units
-# from /usr/lib/systemd/system, even when shared objects use /usr/lib64.
-mv "$target"/usr/lib64/systemd/system/hexagonrpcd-*.service "$target/usr/lib/systemd/system/"
 ch make -C /var/tmp/qmic
 ch make -C /var/tmp/qmic install
 make_install /var/tmp/qrtr
@@ -88,12 +83,9 @@ ch meson compile -C /var/tmp/sensh/build
 ch install -Dm755 /var/tmp/sensh/build/sensh /usr/local/bin/sensh
 make_install /var/tmp/qbootctl
 
-install -d "$target/usr/lib/sysusers.d" "$target/etc/systemd/system"
-cat > "$target/usr/lib/sysusers.d/fastrpc.conf" <<'SYSUSERS'
-u fastrpc - "FastRPC" /var/lib/fastrpc
-SYSUSERS
-ch systemd-sysusers
-ch install -d -o fastrpc -g fastrpc -m 755 /usr/share/qcom/sensors/registry
+install -d "$target/etc/systemd/system"
+ch systemd-sysusers /usr/lib/sysusers.d/fastrpc.conf
+ch systemd-tmpfiles --create /usr/lib/tmpfiles.d/hexagonrpc.conf
 cat > "$target/etc/systemd/system/zhiyu-boot-success.service" <<'UNIT'
 [Unit]
 Description=Mark the active slot as successfully booted
@@ -134,7 +126,7 @@ if [[ -e "$target/run/zhiyu-original-resolv.conf" || -L "$target/run/zhiyu-origi
 fi
 dnf "${installroot[@]}" clean all
 : > "$target/etc/machine-id"
-for source in hexagonrpc qmic qrtr sensh qbootctl; do rm -r "$target/var/tmp/$source"; done
+for source in qmic qrtr sensh qbootctl; do rm -r "$target/var/tmp/$source"; done
 
 # Preserve file contexts in the archive for the SELinux boot-image variant.
 setfiles -F -r "$target" "$target/etc/selinux/targeted/contexts/files/file_contexts" "$target"
