@@ -1,0 +1,66 @@
+name: Build Fedora rootfs
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Fedora release
+        type: choice
+        options: ['44', '45', rawhide]
+        default: '44'
+      desktop:
+        description: Desktop environment
+        type: choice
+        options: [kde, gnome, none]
+        default: kde
+      username:
+        description: Initial username
+        type: string
+        default: user
+      password:
+        description: Initial password (overridden by ROOTFS_PASSWORD)
+        type: string
+        default: changeme
+      hostname:
+        description: Hostname
+        type: string
+        default: fedora
+      package_repository:
+        description: GitHub repository providing Zhiyu RPMs (owner/repo)
+        type: string
+        default: PickaxeHit/linux-zhiyu
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and pack Fedora rootfs
+        env:
+          RELEASE: ${{ inputs.release }}
+          DESKTOP: ${{ inputs.desktop }}
+          USERNAME: ${{ inputs.username }}
+          PASSWORD: ${{ secrets.ROOTFS_PASSWORD || inputs.password }}
+          HOST_NAME: ${{ inputs.hostname }}
+          PACKAGE_REPOSITORY: ${{ inputs.package_repository }}
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$PASSWORD"
+          case "$RELEASE" in 44|45|rawhide) ;; *) exit 2 ;; esac
+          docker run --rm --privileged \
+            -e RELEASE -e DESKTOP -e USERNAME -e PASSWORD -e HOST_NAME -e PACKAGE_REPOSITORY \
+            -v "$PWD:/work" -w /work "quay.io/fedora/fedora:$RELEASE" \
+            bash scripts/build-fedora-rootfs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-${{ inputs.release }}-aarch64-${{ inputs.desktop }}-rootfs
+          path: |
+            fedora-*-rootfs.tar.xz
+            fedora-*-rootfs.tar.xz.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
