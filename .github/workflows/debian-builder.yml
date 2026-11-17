@@ -335,12 +335,21 @@ jobs:
           ch install -d -o fastrpc -g fastrpc -m 755 /usr/share/qcom/sensors/registry
 
           # ---- 6. boot slot marking ----
-          # Debian's qbootctl package ships qbootctl.service, which runs
-          # "qbootctl -m" once boot-complete.target is reached.
-          ch systemctl enable qbootctl.service
+          # Trigger the packaged service from udev and wait for both slot links.
+          ch systemctl disable qbootctl.service
+          sudo install -Dm644 /dev/stdin "$T/etc/udev/rules.d/90-zhiyu-qbootctl.rules" <<'EOF'
+          SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_NAME}=="boot_b", TAG+="systemd", ENV{SYSTEMD_WANTS}+="qbootctl.service"
+          EOF
+          sudo install -Dm644 /dev/stdin "$T/etc/systemd/system/qbootctl.service.d/10-zhiyu.conf" <<'EOF'
+          [Unit]
+          ConditionPathExistsGlob=
+          Requires=dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
+          Requisite=multi-user.target
+          After=multi-user.target dev-disk-by\x2dpartlabel-boot_a.device dev-disk-by\x2dpartlabel-boot_b.device
+          EOF
 
           # ---- 7. verify ----
-          UNITS="NetworkManager bluetooth qbootctl"
+          UNITS="NetworkManager bluetooth"
           case "$DESKTOP" in
             kde) UNITS="$UNITS plasmalogin || true" ;;
             plasmamobile) UNITS="$UNITS sddm" ;;
