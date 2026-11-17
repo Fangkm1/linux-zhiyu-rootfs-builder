@@ -151,7 +151,7 @@ jobs:
           # kscreen.  Keeping --no-install-recommends for the rest of the list
           # keeps the support packages predictable.
           case "$DESKTOP" in
-            kde) DESKTOP_PKGS="kde-standard plasma-login-manager" ;;
+            kde) DESKTOP_PKGS="kde-standard" ;;
             gnome)
               # gnome alone does not pull the Adwaita icon theme or Cantarell:
               # without them the shell has no symbolic icons (missing arrows,
@@ -193,6 +193,8 @@ jobs:
           ch locale-gen
           echo 'LANG=zh_CN.UTF-8' | sudo tee "$T/etc/locale.conf" >/dev/null
           echo "$HOST_NAME" | sudo tee "$T/etc/hostname" >/dev/null
+          # Identify the tablet form factor even when the kernel runs under Gunyah.
+          printf 'CHASSIS=tablet\n' | sudo tee "$T/etc/machine-info" >/dev/null
           printf '127.0.0.1\tlocalhost\n127.0.1.1\t%s\n' "$HOST_NAME" | sudo tee "$T/etc/hosts" >/dev/null
           sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai "$T/etc/localtime"
 
@@ -204,8 +206,7 @@ jobs:
           ch systemctl enable NetworkManager bluetooth ssh
           case "$DESKTOP" in
             kde|plasmamobile)
-              # Both options list their display manager explicitly; only the
-              # kde branch needs this fallback for trixie.
+              # Plasma Mobile installs SDDM above; KDE selects an available manager.
               if [ "$DESKTOP" = plasmamobile ]; then
                 ch systemctl enable sddm
               elif ch apt-cache show plasma-login-manager >/dev/null 2>&1; then
