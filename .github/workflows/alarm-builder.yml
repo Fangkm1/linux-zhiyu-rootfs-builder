@@ -40,9 +40,8 @@ env:
   VA_DRIVER_SRC: qcom-va-driver-0980a1decf26d34c9aa71cd0a4a0d25703a7a17f
   # Desktop-side remote procedure daemon for the ADSP (hexagonrpcd + units).
   # The AUR package for this is gone; build from upstream.
-  # Where the rootfs takes the board packages from (firmware + topology,
-  # libcamera, sensord); images.yml publishes them here on every build.
-  RELEASE_URL: https://github.com/PickaxeHit/linux-zhiyu/releases/latest/download
+  # exp publishes the complete, indexed Pacman repository as prerelease assets.
+  PACKAGE_REPO_BASE: https://github.com/PickaxeHit/linux-zhiyu/releases/download/repo-pacman
   HEXAGONRPC_URL: https://github.com/linux-msm/hexagonrpc/archive/da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz
   HEXAGONRPC_SRC: hexagonrpc-da7a3742ab8d5273a281b70ee11f16fb2cb6a690
 
@@ -57,19 +56,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libarchive-tools zstd
           df -h /
-
-      - name: Checkout linux-zhiyu (firmware + alsa-ucm2)
-        uses: actions/checkout@v4
-        with:
-          repository: PickaxeHit/linux-zhiyu
-          path: zhiyu
-          token: ${{ secrets.ZHIYU_TOKEN || github.token }}
-          lfs: true
-          sparse-checkout: |
-            scripts/alsa-ucm2
-            scripts/90-dma-heap.rules
-            scripts/91-flash-led.rules
-            scripts/60-persistent-v4l.rules
 
       - name: Build rootfs
         env:
@@ -248,9 +234,6 @@ jobs:
           u fastrpc - "FastRPC" /var/lib/fastrpc
           d /var/lib/fastrpc 0755 fastrpc fastrpc
           EOF
-          sudo install -Dm644 /dev/stdin "$T/etc/udev/rules.d/90-fastrpc.rules" >/dev/null <<'EOF'
-          KERNEL=="fastrpc-*", SUBSYSTEM=="misc", GROUP="fastrpc", MODE="0660"
-          EOF
           # The SNS config/registry now arrives with zhiyu-firmware; only the
           # writable registry directory has to be created for the fastrpc user.
           # The runner has no systemd-sysusers; the target does.
@@ -333,37 +316,22 @@ jobs:
             c chown "$USERNAME:$USERNAME" "/home/$USERNAME/.zshrc"
           fi
 
-          Z="$PWD/zhiyu"
           # services
           c systemctl enable NetworkManager bluetooth
           [ -z "$DM" ] || c systemctl enable "$DM"
           c systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service || true
 
-          # Firmware, libcamera and sensord come from the linux-zhiyu release:
-          # the firmware package carries the blobs *and* the AudioReach
-          # topology (without it the card only gets playback: no MultiMedia3
-          # capture PCM, so UCM has no HiFi profile and PipeWire falls back to
-          # Pro Audio), so the image no longer copies blobs/firmware itself.
-          sudo mkdir -p "$T/var/tmp/rel"
-          # zhiyu-modules carries the full module tree: without it nothing
-          # outside the initramfs can be loaded (fastrpc, the camera sensor
-          # drivers, ...).
-          for f in zhiyu-firmware zhiyu-modules zhiyu-libcamera zhiyu-sensord; do
-            sudo curl -fsSL "$RELEASE_URL/$f.pkg.tar.zst" -o "$T/var/tmp/rel/$f.pkg.tar.zst"
-          done
-          # --ask=4 lets pacman drop the distribution libcamera-ipa/-tools,
-          # which our libcamera replaces.
-          # The glob has to be expanded inside the chroot, not on the runner.
-          c bash -c 'pacman -U --noconfirm --ask=4 /var/tmp/rel/*.pkg.tar.zst'
-          sudo rm -rf "$T/var/tmp/rel"
-          c systemctl enable zhiyu-sensord
+          sudo tee -a "$T/etc/pacman.conf" >/dev/null <<EOF
 
-          # ALSA UCM overlay from linux-zhiyu (merged into /usr/share/alsa/ucm2)
-          U="$Z/scripts/alsa-ucm2"
-          [ -d "$U" ] || { echo "alsa-ucm2 dir missing"; exit 1; }
-          [ -d "$U/ucm2" ] && U="$U/ucm2"
-          sudo mkdir -p "$T/usr/share/alsa/ucm2"
-          sudo cp -a --no-preserve=ownership "$U/." "$T/usr/share/alsa/ucm2/"
+          [zhiyu]
+          SigLevel = Never
+          Server = $PACKAGE_REPO_BASE
+          EOF
+          c pacman -Sy --noconfirm
+          c pacman -S --needed --noconfirm --ask=4 \
+            linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware \
+            libcamera-zhiyu zhiyu-sensord linux-zhiyu-images
+          c systemctl enable zhiyu-sensord
 
           # /etc/resolv.conf ships as a symlink to systemd-resolved's stub
           # (resolved itself is part of the systemd package), but resolved
@@ -382,13 +350,8 @@ jobs:
           # out ("Could not open any dma-buf provider"), so every GStreamer /
           # QtMultimedia camera client fails while libcamera's raw capture
           # still works.
-          # dma-buf heap for libcamera's software ISP, and the torch LED
-          # permissions; both live in linux-zhiyu/scripts.
-          sudo install -Dm644 "$Z/scripts/90-dma-heap.rules" "$T/etc/udev/rules.d/90-dma-heap.rules"
-          sudo install -Dm644 "$Z/scripts/91-flash-led.rules" "$T/etc/udev/rules.d/91-flash-led.rules"
-          # Stop v4l_id from opening the focus lens at boot/resume: opening a
-          # v4l-subdev powers the VCM up and moves the lens.
-          sudo install -Dm644 "$Z/scripts/60-persistent-v4l.rules" "$T/etc/udev/rules.d/60-persistent-v4l.rules"
+          # The firmware package installs the board udev rules for DMA heaps,
+          # the torch LED, focus lens and FastRPC devices.
           c systemctl is-enabled systemd-resolved
 
           # makepkg defaults to zstd in the new system
@@ -448,7 +411,7 @@ jobs:
           c pacman -Qq | grep -E '^linux($|-)' || echo "no linux* packages installed"
           c systemctl is-enabled NetworkManager bluetooth qbootctl-mark-success ${DM:+$DM}
           find "$T/usr/lib/firmware" -type f | wc -l
-          find "$U" -type f | wc -l
+          find "$T/usr/share/alsa/ucm2/conf.d/sm8750" -type f | wc -l
           c getent group wheel
           c systemctl get-default
           echo "--- packages that matter:"

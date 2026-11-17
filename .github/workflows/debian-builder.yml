@@ -45,9 +45,8 @@ env:
   VA_DRIVER_URL: https://github.com/radxa-pkg/qcom-va-driver/archive/0980a1decf26d34c9aa71cd0a4a0d25703a7a17f.tar.gz
   # Desktop-side remote procedure daemon for the ADSP (hexagonrpcd + units);
   # the AUR package is gone, so build upstream.
-  # Where the rootfs takes the board packages from (firmware + topology,
-  # libcamera, sensord); images.yml publishes them here on every build.
-  RELEASE_URL: https://github.com/PickaxeHit/linux-zhiyu/releases/latest/download
+  # exp publishes a complete, indexed APT repository as prerelease assets.
+  PACKAGE_REPO_BASE: https://github.com/PickaxeHit/linux-zhiyu/releases/download/repo-apt
   HEXAGONRPC_URL: https://github.com/linux-msm/hexagonrpc/archive/da7a3742ab8d5273a281b70ee11f16fb2cb6a690.tar.gz
   HEXAGONRPC_SRC: hexagonrpc-da7a3742ab8d5273a281b70ee11f16fb2cb6a690
   VA_DRIVER_SRC: qcom-va-driver-0980a1decf26d34c9aa71cd0a4a0d25703a7a17f
@@ -61,21 +60,8 @@ jobs:
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache /usr/local/lib/android || true
           sudo apt-get update
-          sudo apt-get install -y mmdebstrap debian-archive-keyring xz-utils
+          sudo apt-get install -y mmdebstrap debian-archive-keyring xz-utils zstd
           df -h /
-
-      - name: Checkout linux-zhiyu (firmware + topology + alsa-ucm2)
-        uses: actions/checkout@v4
-        with:
-          repository: PickaxeHit/linux-zhiyu
-          path: zhiyu
-          token: ${{ secrets.ZHIYU_TOKEN || github.token }}
-          lfs: true
-          sparse-checkout: |
-            scripts/alsa-ucm2
-            scripts/90-dma-heap.rules
-            scripts/91-flash-led.rules
-            scripts/60-persistent-v4l.rules
 
       - name: Build rootfs
         env:
@@ -202,7 +188,6 @@ jobs:
           printf '%s:%s\n' "$USERNAME" "$PASSWORD" | ch chpasswd
           echo '%sudo ALL=(ALL:ALL) ALL' | sudo tee "$T/etc/sudoers.d/10-sudo" >/dev/null
           sudo chmod 440 "$T/etc/sudoers.d/10-sudo"
-          Z="$PWD/zhiyu"
           ch systemctl enable NetworkManager bluetooth ssh
           case "$DESKTOP" in
             kde|plasmamobile)
@@ -256,26 +241,13 @@ jobs:
           # enable a "linked" unit.
           ch systemctl enable ssh
 
-          # Firmware (blobs + AudioReach topology), libcamera and sensord come
-          # from the linux-zhiyu release; the topology is what gives the card
-          # its MultiMedia3 capture PCM and therefore the UCM HiFi profile.
-          sudo mkdir -p "$T/var/tmp/rel"
-          # zhiyu-modules carries the full module tree: without it nothing
-          # outside the initramfs can be loaded (fastrpc, the camera sensor
-          # drivers, ...).
-          for f in zhiyu-firmware zhiyu-modules zhiyu-libcamera zhiyu-sensord; do
-            sudo curl -fsSL "$RELEASE_URL/$f.deb" -o "$T/var/tmp/rel/$f.deb"
-          done
-          # dpkg replaces the distribution libcamera packages (Declared as
-          # Replaces/Breaks in ours).
-          ch bash -c 'dpkg -i /var/tmp/rel/*.deb' || ch apt-get -f install -y
-          sudo rm -rf "$T/var/tmp/rel"
+          printf 'deb [arch=arm64 trusted=yes] %s ./\n' "$PACKAGE_REPO_BASE" |
+            sudo tee "$T/etc/apt/sources.list.d/zhiyu.list" >/dev/null
+          ch apt-get update
+          ch apt-get install -y --no-install-recommends \
+            linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware \
+            libcamera-zhiyu zhiyu-sensord linux-zhiyu-images
           ch systemctl enable zhiyu-sensord
-          # ALSA UCM profile for the sm8750 card
-          U="$Z/scripts/alsa-ucm2"
-          [ -d "$U/ucm2" ] && U="$U/ucm2"
-          sudo mkdir -p "$T/usr/share/alsa/ucm2"
-          sudo cp -a --no-preserve=ownership "$U/." "$T/usr/share/alsa/ucm2/"
 
           # ---- 5. VA-API driver ----
           # Use Debian's own package (sid builds an arm64 .deb that installs
@@ -348,9 +320,6 @@ jobs:
           u fastrpc - "FastRPC" /var/lib/fastrpc
           d /var/lib/fastrpc 0755 fastrpc fastrpc
           EOF
-          sudo install -Dm644 /dev/stdin "$T/etc/udev/rules.d/90-fastrpc.rules" >/dev/null <<'EOF'
-          KERNEL=="fastrpc-*", SUBSYSTEM=="misc", GROUP="fastrpc", MODE="0660"
-          EOF
           # The SNS config/registry arrives with zhiyu-firmware; only the
           # writable registry directory has to be created for the fastrpc user.
           ch systemd-sysusers || true
@@ -392,15 +361,8 @@ jobs:
           # /dev/dma_heap/* as 0600 root:root, which locks the desktop user
           # out ("Could not open any dma-buf provider"), so every GStreamer /
           # QtMultimedia camera client fails while libcamera's raw capture
-          # still works.
-          # dma-buf heap for libcamera's software ISP, and the torch LED
-          # permissions; both live in linux-zhiyu/scripts.
-          sudo install -Dm644 "$Z/scripts/90-dma-heap.rules" "$T/etc/udev/rules.d/90-dma-heap.rules"
-          sudo install -Dm644 "$Z/scripts/91-flash-led.rules" "$T/etc/udev/rules.d/91-flash-led.rules"
-          # Stop v4l_id from opening the focus lens at boot/resume: opening a
-          # v4l-subdev powers the VCM up and moves the lens.
-          sudo install -Dm644 "$Z/scripts/60-persistent-v4l.rules" "$T/etc/udev/rules.d/60-persistent-v4l.rules"
-
+          # still works. The firmware package provides the board DMA/LED/V4L
+          # udev rules.
           # ---- 8. cleanup ----
           # Unmount the chroot pseudo filesystems before measuring the tree:
           # du would otherwise walk /proc of the runner and return 1, which
