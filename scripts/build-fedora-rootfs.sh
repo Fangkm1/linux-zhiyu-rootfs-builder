@@ -30,7 +30,7 @@ REPO
 
 installroot=(
     --installroot="$target" --use-host-config --releasever="$RELEASE"
-    --setopt=install_weak_deps=False --setopt=tsflags=nodocs
+    --setopt=tsflags=nodocs
 )
 board=(
     linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware
@@ -106,7 +106,7 @@ printf '127.0.0.1 localhost %s\n::1 localhost\n' "$HOST_NAME" > "$target/etc/hos
 ch useradd -m -G wheel "$USERNAME"
 printf '%s:%s\n' "$USERNAME" "$PASSWORD" | ch chpasswd
 ch passwd -l root
-ch systemctl --root=/ enable NetworkManager.service sshd.service bluetooth.service \
+ch systemctl --root=/ enable NetworkManager.service sshd.service bluetooth.service getty@.service \
     hexagonrpcd-adsp-rootpd.service hexagonrpcd-adsp-sensorspd.service \
     zhiyu-sensord.service zhiyu-boot-success.service
 if [[ -n "$display_manager" ]]; then
