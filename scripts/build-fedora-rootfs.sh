@@ -92,9 +92,18 @@ ch useradd -m -G wheel "$USERNAME"
 printf '%s:%s\n' "$USERNAME" "$PASSWORD" | ch chpasswd
 ch passwd -l root
 ch systemctl --root=/ disable qbootctl.service
-ch systemctl --root=/ enable NetworkManager.service sshd.service bluetooth.service getty@.service chronyd.service \
+units=(NetworkManager.service sshd.service bluetooth.service chronyd.service \
     hexagonrpcd-adsp-rootpd.service hexagonrpcd-adsp-sensorspd.service \
-    zhiyu-sensord.service zhiyu-boot-success.service
+    zhiyu-sensord.service zhiyu-boot-success.service)
+# kmscon (pulled in by the desktop packages) owns
+# /etc/systemd/system/autovt@.service -> kmsconvt@.service. Enabling
+# getty@.service on top of that fails with "already exists and is a symlink"
+# and makes `systemctl enable' exit non-zero, which aborts the build under
+# `set -e'. Only request getty when nothing else claimed the VT alias.
+if ! ch test -L /etc/systemd/system/autovt@.service; then
+    units+=(getty@.service)
+fi
+ch systemctl --root=/ enable "${units[@]}"
 if [[ -n "$display_manager" ]]; then
     # Fedora desktop packages can set the alias during installation.
     if ! ch test -e /etc/systemd/system/display-manager.service; then
