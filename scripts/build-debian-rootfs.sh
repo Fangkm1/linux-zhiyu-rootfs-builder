@@ -192,11 +192,11 @@ ch systemctl enable ssh
 printf 'deb [arch=arm64 trusted=yes] %s ./\n' "$PACKAGE_REPO_BASE" |
   sudo tee "$T/etc/apt/sources.list.d/zhiyu.list" >/dev/null
 ch apt-get update
-# The repository carries both libcamera ABIs; ask for the 0.7 one, which is
-# what the packages that link against libcamera in this image are built for.
+# Install whichever libcamera ABI the published package index carries:
+# pinning 0.7.* fails while the repo index only lists 0.8.0.
 ch apt-get install -y --no-install-recommends \
   linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware \
-  'libcamera-zhiyu=0.7.*' zhiyu-sensord linux-zhiyu-images
+  libcamera-zhiyu zhiyu-sensord linux-zhiyu-images
 ch systemctl enable zhiyu-sensord
 
 # ---- 5. VA-API driver ----
