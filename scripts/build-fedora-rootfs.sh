@@ -40,7 +40,7 @@ installroot=(
 )
 board=(
     linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware
-    linux-zhiyu-images libcamera-zhiyu zhiyu-sensord hexagonrpc sensh
+    linux-zhiyu-images zhiyu-sensord hexagonrpc sensh
 )
 # Keep the translation files carried by RPMs in addition to the langpacks.
 rpm_config="$target/.zhiyu-rpm-config"
@@ -54,6 +54,15 @@ XDG_CONFIG_HOME="$rpm_config" dnf "${installroot[@]}" -y install \
     mesa-dri-drivers mesa-vulkan-drivers \
     qbootctl qmic qrtr \
     "${board[@]}" "${desktop[@]}"
+
+# The repository carries both libcamera ABIs.  Rawhide follows the default
+# (currently 0.8); the stable releases pin 0.7, whose ABI their libcamera
+# consumers are built against.
+if [ "$RELEASE" = rawhide ]; then
+    XDG_CONFIG_HOME="$rpm_config" dnf "${installroot[@]}" -y install libcamera-zhiyu
+else
+    XDG_CONFIG_HOME="$rpm_config" dnf "${installroot[@]}" -y install 'libcamera-zhiyu-0.7.*'
+fi
 install -Dm644 "$rpm_config/rpm/macros" "$target/etc/rpm/macros.zhiyu-langpacks"
 rm "$rpm_config/rpm/macros"
 rmdir "$rpm_config/rpm" "$rpm_config"

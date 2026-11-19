@@ -278,6 +278,9 @@ SigLevel = Never
 Server = $PACKAGE_REPO_BASE
 EOF
 c pacman -Sy --noconfirm
+# The Arch repository only carries the 0.7 libcamera ABI: pacman has no solver
+# that would hold a package back, so a 0.8 upgrade would either abort -Syu or
+# break the binaries that link against it.
 c pacman -S --needed --noconfirm --ask=4 \
   linux-zhiyu-modules linux-zhiyu-headers linux-zhiyu-firmware \
   libcamera-zhiyu zhiyu-sensord linux-zhiyu-images
