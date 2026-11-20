@@ -144,7 +144,10 @@ case "$DESKTOP" in
       ch systemctl enable sddm
     elif ch apt-cache show plasma-login-manager >/dev/null 2>&1; then
       ch apt-get install -y --no-install-recommends plasma-login-manager
-      ch systemctl enable plasmalogin
+      # forky's sddm (pulled in as a dependency) already owns the
+      # display-manager alias; plasmalogin cannot take it over.
+      ch systemctl enable plasmalogin || true
+      ch sh -c 'test -e /etc/systemd/system/display-manager.service || systemctl enable sddm' || true
     else
       # trixie has no plasma-login-manager; sddm is the fallback
       ch apt-get install -y --no-install-recommends sddm
